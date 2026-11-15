@@ -224,7 +224,7 @@ fi
 
 if [[ $(get_config DISABLE_CLOUD) == "no" ]] ; then
     (
-        cd /home/app
+        cd /home/app || exit 1
         killall dispatch
         LD_PRELOAD=/home/yi-hack-v5/lib/ipc_multiplex.so ./dispatch &
         sleep 3

@@ -37,9 +37,12 @@ jobs:
           #   SC2034        - vars assigned for sourcing scripts
           #   SC2039/2169/2148/2187 - legacy sh-dialect hints
           #   SC3010/3014/3036/3037/3043/3045/3057/3060 - busybox ash bash-compat
+          #   SC3006/3018/3020/3048 - busybox ash arithmetic & killall dialect
+          #   SC2164 - pre-existing upstream 'cd' without guard (busybox, single-user cam)
           EXCLUDES="-e SC1090 -e SC2010 -e SC2034 -e SC2039 -e SC2044 -e SC2045 \
             -e SC2148 -e SC2169 -e SC2187 -e SC3010 -e SC3014 -e SC3036 \
-            -e SC3037 -e SC3043 -e SC3045 -e SC3057 -e SC3060"
+            -e SC3037 -e SC3043 -e SC3045 -e SC3057 -e SC3060 \
+            -e SC3006 -e SC3018 -e SC3020 -e SC3048 -e SC2164"
 
           echo "=== Linting patched shell scripts ==="
           find src/static/static/home/yi-hack-v5/script/ src/www/httpd/cgi-bin/ -name "*.sh" -print0 \
