@@ -20,6 +20,19 @@ This is a patched fork of [`alienatedsec/yi-hack-v5`](https://github.com/alienat
 - **Watchdog & cron fixes** (ported from `Temporalwar/yi-hack-v5-updated`): `wd_rtsp.sh` port-variable fix so locked `rRTSPServer` processes are restarted, `>>` (append) instead of `>` for all crontab writes, `camera_settings.sh` persistence via `sed -i`, CGI `VAR = "x"` spacing/syntax fixes, `setsid` detachment for `onvif_simple_server`, and `rRTSPServer` now starts in *all* RTSP stream modes (previously only `both`).
 - **Frigate-ready defaults** — single high-res RTSP stream (`ch0_0.h264`), audio disabled, cloud disabled, MQTT off, on-camera AI/motion detection off, swap enabled (swappiness 15), timezone PST8PDT.
 
+### ⚠️ go2rtc / Frigate: use UDP transport for the camera→go2rtc leg
+
+The stock `rRTSPServer` (LIVE555 v2023.01.19) has a verified bug on this camera: **any RTSP request that arrives mid-stream (`GET_PARAMETER` keepalive, `OPTIONS`, …) permanently stops RTP data for that session** — new clients keep working, the affected one goes silent until it reconnects (and dies again at its next keepalive ~30 s later). Interleaved-TCP sessions are the ones that starve; UDP sessions are immune.
+
+For go2rtc ≥ 1.9.11, add `#transport=udp` to the camera source:
+
+```yaml
+streams:
+  yi_cam: rtsp://192.168.2.203:554/ch0_0.h264#transport=udp
+```
+
+go2rtc/Frigate can still consume the restream over TCP. (go2rtc needs to receive the inbound UDP — use `network_mode: host` in Docker, or a non-containerized install.) For older go2rtc, use `ffmpeg:rtsp://…#input=rtsp/udp` instead.
+
 The GitHub Action (`.github/workflows/build.yml`) repacks the upstream `0.4.1` `yi_home_1080p` firmware image with these patched userland files and publishes `yi_home_1080p_0.4.1-48us-frigate.tgz`.
 
 ---
