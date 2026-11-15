@@ -1,0 +1,148 @@
+name: Build 48US Frigate firmware
+
+on:
+  push:
+    branches: [ master, 'fix/**' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # Upstream firmware this fork is based on
+  UPSTREAM_REPO: alienatedsec/yi-hack-v5
+  UPSTREAM_TAG: 0.4.1
+  CAMERA_NAME: yi_home_1080p
+  OUTPUT_NAME: yi_home_1080p_0.4.1-48us-frigate
+
+jobs:
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Lint shell scripts
+        run: |
+          # Excluded checks (busybox-ash on the camera supports these bash-isms,
+          # and camera filenames are machine-generated with no whitespace):
+          #   SC1090        - can't follow runtime-sourced config files
+          #   SC2010/44/45  - ls|grep / find / ls loops over machine-generated names
+          #   SC2034        - vars assigned for sourcing scripts
+          #   SC2039/2169/2148/2187 - legacy sh-dialect hints
+          #   SC3010/3014/3036/3037/3043/3045/3057/3060 - busybox ash bash-compat
+          EXCLUDES="-e SC1090 -e SC2010 -e SC2034 -e SC2039 -e SC2044 -e SC2045 \
+            -e SC2148 -e SC2169 -e SC2187 -e SC3010 -e SC3014 -e SC3036 \
+            -e SC3037 -e SC3043 -e SC3045 -e SC3057 -e SC3060"
+
+          echo "=== Linting patched shell scripts ==="
+          find src/static/static/home/yi-hack-v5/script/ src/www/httpd/cgi-bin/ -name "*.sh" -print0 \
+            | xargs -0 shellcheck -S warning $EXCLUDES 2>&1 | tee lint-results.txt
+
+          if [ -s lint-results.txt ]; then
+            echo "::error::ShellCheck found issues (see lint-results.txt)"
+            exit 1
+          fi
+          echo "=== Lint clean ==="
+
+      - name: Upload lint results
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-results
+          path: lint-results.txt
+          retention-days: 7
+
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lint
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download upstream firmware package
+        run: |
+          URL="https://github.com/${UPSTREAM_REPO}/releases/download/${UPSTREAM_TAG}/${CAMERA_NAME}_${UPSTREAM_TAG}.tgz"
+          echo "Downloading ${URL}"
+          curl -fL -o upstream.tgz "$URL"
+
+      - name: Extract upstream package
+        run: |
+          mkdir -p work
+          tar -xzf upstream.tgz -C work
+          echo "=== Upstream archive contents ==="
+          ls -la work/
+
+      - name: Overlay patched userland
+        run: |
+          set -e
+          # Locate the yi-hack-v5 userland directory inside the archive
+          HACK_DIR=$(find work -type d -name 'yi-hack-v5' | head -n 1)
+          if [ -z "$HACK_DIR" ]; then
+            echo "ERROR: yi-hack-v5 directory not found in upstream archive"
+            exit 1
+          fi
+          echo "Patching ${HACK_DIR}"
+
+          # Remove any wpa/ upgrade payload so the camera never re-enters the
+          # wpa_supplicant upgrade / reboot loop
+          rm -rf "${HACK_DIR}/wpa"
+
+          # Overlay patched scripts, configs and web UI
+          cp -av src/static/static/home/yi-hack-v5/script/. "${HACK_DIR}/script/"
+          cp -av src/static/static/home/yi-hack-v5/etc/.    "${HACK_DIR}/etc/"
+          cp -av src/www/httpd/.                            "${HACK_DIR}/www/"
+
+          # Force Unix LF line endings on all shell scripts and conf files
+          find "${HACK_DIR}/script" "${HACK_DIR}/etc" "${HACK_DIR}/www" -type f \
+            \( -name '*.sh' -o -name '*.conf' -o -name '*.json' -o -name '*.js' -o -name 'cloudAPI*' \) \
+            -exec sed -i 's/\r$//' {} +
+
+          echo "=== Verify no wpa upgrade payload remains ==="
+          ! find work -type d -name 'wpa' -path '*yi-hack-v5*' | grep -q .
+          echo "OK: no wpa/ directory inside yi-hack-v5"
+
+      - name: Repack firmware package
+        run: |
+          mkdir -p dist
+          tar -czf "dist/${OUTPUT_NAME}.tgz" -C work .
+
+          echo "=== Package contents (top level) ==="
+          tar -tzf "dist/${OUTPUT_NAME}.tgz" | cut -d/ -f1 | sort -u
+
+      - name: Verify package
+        run: |
+          TARBALL="dist/${OUTPUT_NAME}.tgz"
+          test -s "$TARBALL"
+          echo "=== Verifying required entries ==="
+          tar -tzf "$TARBALL" | grep -E '(^|/)(home_y20|rootfs_y20)$' && echo "OK: firmware images present"
+          tar -tzf "$TARBALL" | grep -q 'yi-hack-v5/script/system.sh' && echo "OK: patched system.sh present"
+          tar -tzf "$TARBALL" | grep -v 'yi-hack-v5/wpa/' | grep -q . && echo "OK: no wpa/ payload"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.OUTPUT_NAME }}
+          path: dist/${{ env.OUTPUT_NAME }}.tgz
+          retention-days: 7
+
+      - name: Publish rolling release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Build
+          body: |
+            Automated build for YI 1080p Home Camera **48US** (`yi_home_1080p` / `y20`), based on upstream `0.4.1`.
+
+            Copy `home_y20`, `rootfs_y20` and `yi-hack-v5/` to a clean MBR FAT32 microSD card.
+          files: dist/${{ env.OUTPUT_NAME }}.tgz
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

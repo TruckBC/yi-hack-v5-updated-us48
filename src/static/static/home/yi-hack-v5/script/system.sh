@@ -28,24 +28,14 @@ export PATH=/usr/bin:/usr/sbin:/bin:/sbin:/home/base/tools:/home/yi-hack-v5/bin:
 #  ln -sf /dev/null /var/run/utmp
 #fi
 
-# Upgrade wpa_supplicant modules - after 0.4.1 baseline
+# wpa_supplicant upgrade support removed for the 48US (yi_home_1080p / mt7601Usta).
+# The 0.4.1 upgrade routine replaced YI's 2017 wpa_supplicant with a 2024 build and
+# rebooted the camera if the upgrade flag was still present, causing a boot loop.
+# We never overwrite the stock wpa_supplicant: just clear any stale upgrade flag.
 if [ -f $YI_HACK_PREFIX/wpa/wpa_supplicant_upgrade ]; then
-	ifconfig wlan0 up
-    echo "---backing up wpa---"
-    cp /home/base/tools/wpa_supplicant $YI_HACK_PREFIX/wpa/wpa_supplicant_backup
-    cp /home/base/tools/wpa_cli $YI_HACK_PREFIX/wpa/wpa_cli_backup
-    cp /home/base/tools/wpa_passphrase $YI_HACK_PREFIX/wpa/wpa_passphrase_backup
-    killall watch_process
-    killall wpa*
-    mv /tmp/sd/yi-hack-v5/wpa/*.so* /home/lib/
-    mv /tmp/sd/yi-hack-v5/wpa/wpa_supplicant /home/base/tools/
-    mv /tmp/sd/yi-hack-v5/wpa/wpa_cli /home/base/tools/
-    mv /tmp/sd/yi-hack-v5/wpa/wpa_passphrase /home/base/tools/
-    rm $YI_HACK_PREFIX/wpa/wpa_supplicant_upgrade
-    reboot
-    echo "---wpa upgrade done---"
-else
-	echo "---no wpa upgrade---"
+	rm -f $YI_HACK_PREFIX/wpa/wpa_supplicant_upgrade
+	sync
+	echo "---stale wpa upgrade flag removed (upgrade disabled on this model)---"
 fi
 
 #reversing symlinks
@@ -54,8 +44,8 @@ if [ -L "/var/run/utmp" ]; then
   reboot
 fi
 
-if [ ! -L "~/.ash_history" ]; then
-  ln -sf /dev/null ~/.ash_history
+if [ ! -L "$HOME/.ash_history" ]; then
+  ln -sf /dev/null "$HOME/.ash_history"
 fi
 
 if [ ! -L "/home/yi-hack-v5/.ash_history" ]; then
@@ -88,15 +78,9 @@ if [ -f $YI_HACK_UPGRADE_PATH/yi-hack-v5/fw_upgrade_in_progress ]; then
     exit
 fi
 
-# Update cloudAPI_fake if necessary
-if [[ "$(grep -m 3 -n '' /home/app/cloudAPI_fake | tail -n 1 | cut -d ':' -f 2 | cut -c 3-)" != "$(grep -m 3 -n '' $YI_HACK_PREFIX/script/cloudAPI_fake | tail -n 1 | cut -d ':' -f 2 | cut -c 3-)" ]]; then
-  cp -f $YI_HACK_PREFIX/script/cloudAPI_fake /home/app/
-fi
-
-# Update cloudAPI if necessary
-if [[ "$(grep -m 3 -n '' /home/app/cloudAPI | tail -n 1 | cut -d ':' -f 2 | cut -c 3-)" != "$(grep -m 3 -n '' $YI_HACK_PREFIX/script/cloudAPI | tail -n 1 | cut -d ':' -f 2 | cut -c 3-)" ]]; then
-  cp -f $YI_HACK_PREFIX/script/cloudAPI /home/app/
-fi
+# Always update cloudAPI_fake and cloudAPI from the SD card to flash
+cp -f $YI_HACK_PREFIX/script/cloudAPI_fake /home/app/
+cp -f $YI_HACK_PREFIX/script/cloudAPI /home/app/
 
 # Manual Wi-Fi config
 if [ -f /tmp/sd/recover/configure_wifi.cfg ]; then
@@ -111,9 +95,46 @@ if [ -f "/tmp/sd/recover/mtdblock2_recover.bin" ]; then
 fi
 $YI_HACK_PREFIX/script/check_conf.sh
 
+# Sanitize the stock wpa_supplicant.conf for the 48US (mt7601Usta USB wifi).
+# YI's generated config contains a dual WPA-PSK + legacy WEP block which crashes
+# the mt7601Usta module ("wpa may crashed, now reset" -> "no usb dev").
+# Rewrite it as a single clean WPA2-PSK (RSN/CCMP) block using the credentials
+# stored in mtdblock2, then reload wpa_supplicant. Runs in the background with a
+# retry loop because dispatch creates the file a few seconds after boot.
+(
+    WPA_CONF="/tmp/wpa_supplicant.conf"
+    CNT=0
+    while [ $CNT -lt 30 ]; do
+        [ -f "$WPA_CONF" ] && break
+        CNT=$((CNT+1))
+        sleep 2
+    done
+    if [ -f "$WPA_CONF" ] && ! grep -q "^group=CCMP$" "$WPA_CONF"; then
+        WIFI_SSID=$(dd bs=1 skip=28 count=64 if=/dev/mtdblock2 2>/dev/null | tr -d '\000\r\n')
+        WIFI_KEY=$(dd bs=1 skip=92 count=64 if=/dev/mtdblock2 2>/dev/null | tr -d '\000\r\n')
+        if [ ! -z "$WIFI_SSID" ] && [ ! -z "$WIFI_KEY" ]; then
+            echo "ctrl_interface=/var/run/wpa_supplicant" > $WPA_CONF
+            echo "ap_scan=1" >> $WPA_CONF
+            echo "network={" >> $WPA_CONF
+            echo "    ssid=\"$WIFI_SSID\"" >> $WPA_CONF
+            echo "    scan_ssid=1" >> $WPA_CONF
+            echo "    proto=RSN" >> $WPA_CONF
+            echo "    key_mgmt=WPA-PSK" >> $WPA_CONF
+            echo "    pairwise=CCMP" >> $WPA_CONF
+            echo "    group=CCMP" >> $WPA_CONF
+            echo "    psk=\"$WIFI_KEY\"" >> $WPA_CONF
+            echo "}" >> $WPA_CONF
+            sync
+            killall -q wpa_supplicant
+            echo "---wpa_supplicant.conf sanitized (WPA2-PSK/CCMP only)---"
+        fi
+    fi
+) &
+
 hostname -F $YI_HACK_PREFIX/etc/hostname
 
-export TZ=$(get_config TIMEZONE)
+TZ=$(get_config TIMEZONE)
+export TZ
 
 if [[ $(get_config SWAP_FILE) == "yes" ]] || [[ $MODEL_SUFFIX == "yi_dome" ]] || [[ $MODEL_SUFFIX == "yi_home" ]] ; then
     SD_PRESENT=$(mount | grep mmc | grep -c ^)
@@ -131,10 +152,20 @@ if [[ $(get_config SWAP_FILE) == "yes" ]] || [[ $MODEL_SUFFIX == "yi_dome" ]] ||
         sysctl -w vm.dirty_writeback_centisecs=100
         sysctl -w vm.dirty_expire_centisecs=500
         sysctl -w vm.vfs_cache_pressure=200
-        sysctl -w vm.swappiness=60
+        SWAPPINESS=$(get_config SWAP_SWAPPINESS)
+        case "$SWAPPINESS" in
+            ''|*[!0-9]*) SWAPPINESS=60 ;;
+        esac
+        sysctl -w vm.swappiness=$SWAPPINESS
         sysctl -w vm.laptop_mode=5
     fi
 fi
+
+# Increase network buffers for RTSP streaming stability
+sysctl -w net.core.rmem_max=524288 > /dev/null 2>&1
+sysctl -w net.core.wmem_max=524288 > /dev/null 2>&1
+sysctl -w net.core.rmem_default=524288 > /dev/null 2>&1
+sysctl -w net.core.wmem_default=524288 > /dev/null 2>&1
 
 if [[ x$(get_config USERNAME) != "x" ]] ; then
     USERNAME=$(get_config USERNAME)
@@ -188,7 +219,7 @@ fi
 
 if [[ $(get_config NTPD) == "yes" ]] ; then
     # Wait until all the other processes have been initialized
-    sleep 5 && ntpd -p $(get_config NTP_SERVER) &
+    sleep 5 && ntpd -p "$(get_config NTP_SERVER)" &
 fi
 
 if [[ $(get_config DISABLE_CLOUD) == "no" ]] ; then
@@ -213,7 +244,7 @@ if [[ $(get_config DISABLE_CLOUD) == "no" ]] ; then
 fi
 if [[ $(get_config DISABLE_CLOUD) == "yes" ]] ; then
     (
-        cd /home/app
+        cd /home/app || exit 1
         killall dispatch
         LD_PRELOAD=/home/yi-hack-v5/lib/ipc_multiplex.so ./dispatch &
         sleep 3
@@ -221,12 +252,12 @@ if [[ $(get_config DISABLE_CLOUD) == "yes" ]] ; then
             echo -ne '\x01\x00\x00\x00' | dd of=/tmp/mmap.info bs=1 seek=0 count=4 conv=notrunc
         fi
         LD_LIBRARY_PATH="/home/yi-hack-v5/lib:/lib:/home/lib:/home/app/locallib:/home/hisiko/hisilib" ./rmm &
-		sleep 8
+        sleep 8
         if [[ $(get_config REC_WITHOUT_CLOUD) == "yes" ]] ; then
-            cd /home/app
+            cd /home/app || exit 1
             ./mp4record &
         fi
-		sleep 4
+        sleep 4
         ./cloud &
     )
 fi
@@ -260,9 +291,9 @@ mkdir -p $YI_HACK_PREFIX/etc/dropbear
     dropbear -R -B
 fi
 
-mqttv4 &
-
+# MQTT daemon only starts when explicitly enabled (saves RAM when unused)
 if [[ $(get_config MQTT) == "yes" ]] ; then
+    mqttv4 &
     mqtt-config &
     $YI_HACK_PREFIX/script/conf2mqtt.sh &
 fi
@@ -322,8 +353,11 @@ if [[ $(get_config RTSP) == "yes" ]] ; then
         if [[ $(get_config ONVIF_PROFILE) == "high" ]] || [[ $(get_config ONVIF_PROFILE) == "both" ]] ; then
             ONVIF_PROFILE_0="name=Profile_0\nwidth=$HIGHWIDTH\nheight=$HIGHHEIGHT\nurl=rtsp://$RTSP_USERPWD%s$D_RTSP_PORT/ch0_0.h264\nsnapurl=http://$RTSP_USERPWD%s$D_HTTPD_PORT/cgi-bin/snapshot.sh?res=high$WATERMARK\ntype=H264"
         fi
-    rRTSPServer -r $RRTSP_RES -a $RRTSP_AUDIO -p $RRTSP_PORT -u $RRTSP_USER -w $RRTSP_PWD &
     fi
+    # Start rRTSPServer for every stream mode (low/high/both). It was previously
+    # only launched in the "both" branch, so high/low modes relied on the
+    # watchdog to start it ~10s after boot.
+    rRTSPServer -r $RRTSP_RES -a $RRTSP_AUDIO -p $RRTSP_PORT -u $RRTSP_USER -w $RRTSP_PWD &
 #Seems to be killing the resource - fixed via #153
     $YI_HACK_PREFIX/script/wd_rtsp.sh &
 #The above section (except ONVIF) to be also copied to service.sh
@@ -391,7 +425,7 @@ if [[ $(get_config ONVIF) == "yes" ]] ; then
     fi
 
     echo "#EVENT" >> $ONVIF_SRVD_CONF
-    echo "events=3" >> $ONVIF_SRVD_CONF
+    echo "events=6" >> $ONVIF_SRVD_CONF
     echo "#Event 0" >> $ONVIF_SRVD_CONF
     echo "topic=tns1:VideoSource/MotionAlarm" >> $ONVIF_SRVD_CONF
     echo "source_name=VideoSourceConfigurationToken" >> $ONVIF_SRVD_CONF
@@ -424,26 +458,44 @@ if [[ $(get_config ONVIF) == "yes" ]] ; then
     echo "input_file=/tmp/onvif_notify_server/sound_detection" >> $ONVIF_SRVD_CONF
 
     chmod 0600 $ONVIF_SRVD_CONF
-    onvif_simple_server --conf_file $ONVIF_SRVD_CONF
-    ipc2file
-    onvif_notify_server --conf_file $ONVIF_SRVD_CONF
+
+    # Start the event pipeline before onvif_simple_server (which blocks)
+    mkdir -p /tmp/onvif_notify_server
+    ipc2file &
+    onvif_notify_server --conf_file $ONVIF_SRVD_CONF &
 
     if [[ $(get_config ONVIF_WSDD) == "yes" ]] ; then
-        wsd_simple_server --pid_file /var/run/wsd_simple_server.pid --if_name $ONVIF_NETIF --xaddr "http://%s$D_HTTPD_PORT/onvif/device_service" -m yi_hack -n Yi
+        sleep 5 && wsd_simple_server --pid_file /var/run/wsd_simple_server.pid --if_name $ONVIF_NETIF --xaddr "http://%s$D_HTTPD_PORT/onvif/device_service" -m yi_hack -n Yi &
     fi
+
+    # setsid detaches onvif_simple_server from the controlling terminal so it
+    # survives being launched from init and doesn't take the boot process down
+    # with it if it crashes (crash-loop prevention).
+    setsid onvif_simple_server --conf_file $ONVIF_SRVD_CONF >/dev/null 2>&1 &
 fi
 
 framefinder $MODEL_SUFFIX &
+
+# Restore camera on/off state from camera.conf
+CAMERA_CONF="$YI_HACK_PREFIX/etc/camera.conf"
+if [ -f "$CAMERA_CONF" ]; then
+    SWITCH_ON=$(grep "^SWITCH_ON=" "$CAMERA_CONF" | cut -d= -f2)
+    if [ "$SWITCH_ON" = "no" ]; then
+        ( sleep 15 && ipc_cmd -t off ) &
+    else
+        ( sleep 15 && ipc_cmd -t on ) &
+    fi
+fi
 
 # Add crontab
 CRONTAB=$(get_config CRONTAB)
 FREE_SPACE=$(get_config FREE_SPACE)
 mkdir -p /var/spool/cron/crontabs/
 if [ ! -z "$CRONTAB" ]; then
-    echo "$CRONTAB" > /var/spool/cron/crontabs/root
+    echo "$CRONTAB" >> /var/spool/cron/crontabs/root
 fi
 if [ "$FREE_SPACE" != "0" ]; then
-    echo "0 * * * * /tmp/sd/yi-hack-v5/script/clean_records.sh $FREE_SPACE" > /var/spool/cron/crontabs/root
+    echo "0 * * * * /tmp/sd/yi-hack-v5/script/clean_records.sh $FREE_SPACE" >> /var/spool/cron/crontabs/root
 fi
 
 /usr/sbin/crond -c /var/spool/cron/crontabs/

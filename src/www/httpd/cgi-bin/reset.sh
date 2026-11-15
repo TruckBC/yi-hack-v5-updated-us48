@@ -2,7 +2,7 @@
 
 # 0.4.1j
 
-cd /tmp/sd/yi-hack-v5/etc
+cd /tmp/sd/yi-hack-v5/etc || exit 1
 
 rm hostname
 

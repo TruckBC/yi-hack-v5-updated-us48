@@ -2,7 +2,7 @@
 
 # 0.4.1j
 
-function print_help {
+print_help() {
     echo "configure_wifi.sh"
     echo "will be used on next boot"
 }
@@ -21,9 +21,9 @@ if [ ! -f "$CFG_FILE" ]; then
     exit 1
 fi
 
-TMP=$(cat $CFG_FILE | grep wifi_ssid=)
+TMP=$(cat $CFG_FILE | grep wifi_ssid= | tr -d '\r')
 SSID=$(echo "${TMP:10}")
-TMP=$(cat $CFG_FILE | grep wifi_psk=)
+TMP=$(cat $CFG_FILE | grep wifi_psk= | tr -d '\r')
 KEY=$(echo "${TMP:9}")
 
 if [ -z "$SSID" ]; then

@@ -16,7 +16,7 @@ return_error() {
     printf "}"
 }
 
-if ! $(validateQueryString $QUERY_STRING); then
+if ! validateQueryString "$QUERY_STRING"; then
     return_error "Invalid query"
     exit
 fi
@@ -33,7 +33,7 @@ do
     if [ "$CONF" == "action" ] ; then
         ACTION="$VAL"
     elif [ "$CONF" == "num" ] ; then
-        if $(validateNumber $VAL); then
+        if validateNumber "$VAL"; then
             NUM="$VAL"
         else
             if [ "$VAL" == "all" ]; then
@@ -44,7 +44,7 @@ do
             fi
         fi
     elif [ "$CONF" == "name" ] ; then
-        if $(validateString $VAL); then
+        if validateString "$VAL"; then
             NAME="$VAL"
         else
             return_error "Wrong arguments"

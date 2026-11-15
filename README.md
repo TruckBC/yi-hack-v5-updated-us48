@@ -10,6 +10,20 @@
     </a>
 </p>
 
+## 48US Frigate fork (`yi-hack-v5-updated-us48`)
+
+This is a patched fork of [`alienatedsec/yi-hack-v5`](https://github.com/alienatedsec/yi-hack-v5) `0.4.1`, targeting the **2018 YI 1080p Home Camera (`48US`, `yi_home_1080p` / `y20`, Hi3518e V200)** and optimized for **Frigate NVR**:
+
+- **No `wpa_supplicant` upgrade / reboot loop** — the 0.4.1 `wpa/` upgrade routine is removed and the flag file is neutralized; `wpa/` is excluded from the packaged archive.
+- **Clean WPA2-PSK (RSN/CCMP) `wpa_supplicant.conf`** — the stock dual WPA-PSK + WEP config crashes the `mt7601Usta` USB Wi-Fi module (`wpa may crashed, now reset` → `no usb dev`); it is rewritten at boot from the credentials in `mtdblock2`.
+- **CRLF-safe Wi-Fi recovery** — `/tmp/sd/recover/configure_wifi.cfg` is parsed with `tr -d '\r'` so Windows-edited configs don't corrupt SSID/PSK.
+- **Watchdog & cron fixes** (ported from `Temporalwar/yi-hack-v5-updated`): `wd_rtsp.sh` port-variable fix so locked `rRTSPServer` processes are restarted, `>>` (append) instead of `>` for all crontab writes, `camera_settings.sh` persistence via `sed -i`, CGI `VAR = "x"` spacing/syntax fixes, `setsid` detachment for `onvif_simple_server`, and `rRTSPServer` now starts in *all* RTSP stream modes (previously only `both`).
+- **Frigate-ready defaults** — single high-res RTSP stream (`ch0_0.h264`), audio disabled, cloud disabled, MQTT off, on-camera AI/motion detection off, swap enabled (swappiness 15), timezone PST8PDT.
+
+The GitHub Action (`.github/workflows/build.yml`) repacks the upstream `0.4.1` `yi_home_1080p` firmware image with these patched userland files and publishes `yi_home_1080p_0.4.1-48us-frigate.tgz`.
+
+---
+
 ## Why this `YI-HACK-V5` firmware?
 
 The answer is simple: missing updates, RTSP, and not based on the latest stock firmware (which features improvements and new cool stuff).
