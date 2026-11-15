@@ -1,0 +1,60 @@
+name: Build rRTSPServer (ARM camera binary)
+
+# Cross-compiles rRTSPServer with the Hi3518E V200 (hisiv300) uclibc
+# toolchain — same toolchain upstream yi-hack uses — and uploads the
+# binary as a workflow artifact for on-camera deployment/testing.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  arm-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable i386 (hisiv300 gcc is a 32-bit binary)
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y libc6:i386 libstdc++6:i386 libz1:i386
+
+      - name: Fetch hisiv300 toolchain
+        run: |
+          cd /opt
+          sudo git clone --depth 1 --filter=blob:none --sparse https://github.com/suda-morris/SUDA_3518E.git
+          cd SUDA_3518E
+          sudo git sparse-checkout set toolchains/arm-hisiv300-linux
+          sudo cp -r toolchains/arm-hisiv300-linux /opt/arm-hisiv300-linux
+          /opt/arm-hisiv300-linux/bin/arm-hisiv300-linux-uclibcgnueabi-gcc --version || true
+
+      - name: Init + build rRTSPServer
+        run: |
+          cd src/rRTSPServer
+          ./init.rRTSPServer
+          export PATH=/opt/arm-hisiv300-linux/bin:$PATH
+          export CROSS=arm-hisiv300-linux-uclibcgnueabi
+          export CROSSPREFIX=${CROSS}-
+          export STRIP=${CROSSPREFIX}strip
+          export CXX=${CROSSPREFIX}g++
+          export CC=${CROSSPREFIX}gcc
+          export LD=${CROSSPREFIX}ld
+          export AS=${CROSSPREFIX}as
+          export AR=${CROSSPREFIX}ar
+          cd live
+          cd liveMedia && make -j2 && cd ..
+          cd groupsock && make -j2 && cd ..
+          cd UsageEnvironment && make -j2 && cd ..
+          cd BasicUsageEnvironment && make -j2 && cd ..
+          make rRTSPServer
+          mkdir -p ../_install/bin
+          cp ./rRTSPServer ../_install/bin/
+          ${STRIP} ../_install/bin/rRTSPServer
+          file ../_install/bin/rRTSPServer
+          ../_install/bin/rRTSPServer --help 2>&1 | head -5 || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rRTSPServer-arm
+          path: src/rRTSPServer/_install/bin/rRTSPServer
