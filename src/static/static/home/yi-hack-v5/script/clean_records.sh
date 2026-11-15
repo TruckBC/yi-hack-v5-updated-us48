@@ -8,7 +8,6 @@ fi
 
 case $1 in
     ''|*[!0-9]*) exit;;
-    *) continue;;
 esac
 
 if [ $1 -gt 99 ]; then
