@@ -44,6 +44,8 @@ jobs:
       - name: Build rRTSPServer (x86)
         run: |
           cd live
+          # Match the camera build flags: no OpenSSL (camera has none)
+          sed -i 's/^COMPILE_OPTS =.*/COMPILE_OPTS =\t$(INCLUDES) -I. -O1 -ffunction-sections -fdata-sections -DSOCKLEN_T=socklen_t -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64 -DNO_OPENSSL=1 -DRTP_PAYLOAD_MAX_SIZE=1352 -DNEWLOCALE_NOT_USED/' config.linux-64bit
           ./genMakefiles linux-64bit
           cp -f ../src/rRTSPServer/Makefile.rRTSPServer Makefile
           cp -rf ../src/rRTSPServer/src .
