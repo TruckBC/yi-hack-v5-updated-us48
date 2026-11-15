@@ -1,0 +1,68 @@
+name: RTSP mid-stream bug repro
+
+# Empirically tests whether mid-stream RTSP keepalives (OPTIONS /
+# GET_PARAMETER, sent by go2rtc every ~25-55s) kill the streaming session,
+# across several LIVE555 versions, using an x86 build on the runner.
+# Verdict lines: "RESULT version=... keepalive-get_parameter=KILLED|OK"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/rtsp_probe.py'
+      - '.github/workflows/rtsp-repro.yml'
+
+jobs:
+  repro:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        live555_version: ["2023.01.19", "2024.05.15", "2024.11.28", "2026.06.24"]
+    env:
+      VER: ${{ matrix.live555_version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev ffmpeg python3
+
+      - name: Generate test H264 stream
+        run: |
+          ffmpeg -y -f lavfi -i testsrc=size=640x480:rate=20 -c:v libx264 -profile:v main -pix_fmt yuv420p -t 10 test.h264
+          ls -la test.h264
+
+      - name: Download LIVE555 ${{ matrix.live555_version }}
+        run: |
+          wget -q https://download.videolan.org/pub/contrib/live555/live.${VER}.tar.gz
+          tar xzf live.${VER}.tar.gz
+          cd live
+          patch -p0 --forward < ../src/rRTSPServer/rRTSPServer.patch || true
+
+      - name: Build rRTSPServer (x86)
+        run: |
+          cd live
+          ./genMakefiles linux-64bit
+          cp -f ../src/rRTSPServer/Makefile.rRTSPServer Makefile
+          cp -rf ../src/rRTSPServer/src .
+          cp -rf ../src/rRTSPServer/include .
+          cd liveMedia && make -j2 && cd ..
+          cd groupsock && make -j2 && cd ..
+          cd UsageEnvironment && make -j2 && cd ..
+          cd BasicUsageEnvironment && make -j2 && cd ..
+          make rRTSPServer CC=gcc CXX=g++
+          ls -la rRTSPServer
+
+      - name: Start server + feeder and probe
+        run: |
+          mkfifo /tmp/h264_high_fifo
+          nohup bash -c 'while true; do cat test.h264; sleep 0.05; done > /tmp/h264_high_fifo' >/dev/null 2>&1 &
+          (cd live && ./rRTSPServer -r high -a no -p 554 >server.log 2>&1 &)
+          sleep 2
+          cat server.log
+          python3 scripts/rtsp_probe.py 2>&1 | tee probe_output.txt
+          echo "RESULT version=${VER} $(grep -o 'keepalive-[a-z_]*=[A-Z]*' probe_output.txt | tr '\n' ' ')"
+          echo "=== server.log ==="
+          cat server.log
