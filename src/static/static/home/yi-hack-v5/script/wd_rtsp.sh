@@ -87,30 +87,59 @@ restart_mqttv4()
 check_rtsp()
 {
     SOCKET=`/bin/netstat -an 2>&1 | grep ":$RRTSP_PORT " | grep LISTEN | grep -c ^`
-    CPU=`top -b -n 1 | grep rRTSPServer | grep -v grep | tail -n 1 | awk '{print $8}'`
+    PID=`pidof rRTSPServer | awk '{print $1}'`
 
-    if [ "$CPU" == "" ]; then
+    if [ -z "$PID" ]; then
         echo "$(date +'%Y-%m-%d %H:%M:%S') - No running processes, restarting rRTSPServer ..." >> $LOG_FILE
         killall -q rRTSPServer
         sleep 1
         restart_rtsp
         COUNTER=0
+        return
     fi
-    if [ $SOCKET -gt 0 ]; then
-        if [ "$CPU" == "0.0" ]; then
+
+    # Robust lock detection: measure the CPU time consumed by rRTSPServer
+    # between two checks, reading the process CPU jiffies directly from /proc.
+    # A stalled rRTSPServer (LIVE555 blocked on a dead client, delivering 0
+    # bytes to new PLAY requests) consumes no CPU at all. The previous
+    # 'top'-based check was too flaky: single-sample CPU flickered between
+    # 0.0 and >0 so the lock counter never reached the restart threshold.
+    # Only treat zero CPU as a lock while at least one client connection is
+    # established on the RTSP port. With no clients the server idles at 0%
+    # CPU, which is healthy and must not trigger a restart.
+    CLIENTS=`/bin/netstat -an 2>&1 | grep ":$RRTSP_PORT " | grep -c ESTABLISHED`
+    if [ $CLIENTS -eq 0 ]; then
+        COUNTER=0
+        LAST_UTIME=
+        return
+    fi
+
+    UTIME=`awk '{print $14+$15}' /proc/$PID/stat 2>/dev/null`
+    if [ -z "$UTIME" ]; then
+        return
+    fi
+    if [ ! -z "$LAST_UTIME" ]; then
+        DELTA=$((UTIME-LAST_UTIME))
+        if [ $DELTA -le 0 ]; then
             COUNTER=$((COUNTER+1))
-            echo "$(date +'%Y-%m-%d %H:%M:%S') - Detected possible locked process ($COUNTER)" >> $LOG_FILE
+            echo "$(date +'%Y-%m-%d %H:%M:%S') - Detected possible locked process ($COUNTER, delta=$DELTA)" >> $LOG_FILE
             if [ $COUNTER -ge $COUNTER_LIMIT ]; then
                 echo "$(date +'%Y-%m-%d %H:%M:%S') - Restarting rtsp process" >> $LOG_FILE
                 killall -q rRTSPServer
                 sleep 1
                 restart_rtsp
                 COUNTER=0
+                LAST_UTIME=
+                return
            fi
         else
+            if [ $COUNTER -gt 0 ]; then
+                echo "$(date +'%Y-%m-%d %H:%M:%S') - Lock cleared (delta=$DELTA)" >> $LOG_FILE
+            fi
             COUNTER=0
         fi
     fi
+    LAST_UTIME=$UTIME
 }
 
 check_cloud()
@@ -151,6 +180,12 @@ check_grabber()
 
 check_mqttv4()
 {
+    # Only monitor mqttv4 when MQTT is actually enabled in the config;
+    # otherwise the watchdog respawns it forever even though it's unused.
+    if [[ $(get_config MQTT) != "yes" ]] ; then
+        return
+    fi
+
     PS=`ps | grep mqttv4 | grep -v grep | grep -c ^`
 
     if [ $PS -eq 0 ]; then

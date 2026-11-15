@@ -476,16 +476,81 @@ fi
 
 framefinder $MODEL_SUFFIX &
 
-# Restore camera on/off state from camera.conf
-CAMERA_CONF="$YI_HACK_PREFIX/etc/camera.conf"
-if [ -f "$CAMERA_CONF" ]; then
-    SWITCH_ON=$(grep "^SWITCH_ON=" "$CAMERA_CONF" | cut -d= -f2)
-    if [ "$SWITCH_ON" = "no" ]; then
-        ( sleep 15 && ipc_cmd -t off ) &
-    else
-        ( sleep 15 && ipc_cmd -t on ) &
+# Apply camera.conf to the running camera. The web UI and this file only
+# record the desired state; the on-camera settings (YI flash defaults or
+# whatever the last app change was) must be pushed to ipc at every boot.
+# Runs in the background, after ipc services are up.
+(
+    CAMERA_CONF="$YI_HACK_PREFIX/etc/camera.conf"
+    if [ -f "$CAMERA_CONF" ]; then
+        sleep 20
+        export LD_LIBRARY_PATH="/lib:/usr/lib:/home/lib:/home/app/locallib:/home/hisiko/hisilib:$YI_HACK_PREFIX/lib"
+        get_cam_conf()
+        {
+            grep "^$1=" "$CAMERA_CONF" | cut -d= -f2 | awk 'NR==1 {print; exit}'
+        }
+        case $(get_cam_conf SWITCH_ON) in
+            no) $YI_HACK_PREFIX/bin/ipc_cmd -t off ;;
+            yes) $YI_HACK_PREFIX/bin/ipc_cmd -t on ;;
+        esac
+        case $(get_cam_conf MOTION_DETECTION) in
+            no) $YI_HACK_PREFIX/bin/ipc_cmd -O off ;;
+            yes) $YI_HACK_PREFIX/bin/ipc_cmd -O on ;;
+        esac
+        case $(get_cam_conf AI_HUMAN_DETECTION) in
+            no) $YI_HACK_PREFIX/bin/ipc_cmd -a off ;;
+            yes) $YI_HACK_PREFIX/bin/ipc_cmd -a on ;;
+        esac
+        case $(get_cam_conf AI_VEHICLE_DETECTION) in
+            no) $YI_HACK_PREFIX/bin/ipc_cmd -E off ;;
+            yes) $YI_HACK_PREFIX/bin/ipc_cmd -E on ;;
+        esac
+        case $(get_cam_conf AI_ANIMAL_DETECTION) in
+            no) $YI_HACK_PREFIX/bin/ipc_cmd -N off ;;
+            yes) $YI_HACK_PREFIX/bin/ipc_cmd -N on ;;
+        esac
+        case $(get_cam_conf FACE_DETECTION) in
+            no) $YI_HACK_PREFIX/bin/ipc_cmd -c off ;;
+            yes) $YI_HACK_PREFIX/bin/ipc_cmd -c on ;;
+        esac
+        case $(get_cam_conf MOTION_TRACKING) in
+            no) $YI_HACK_PREFIX/bin/ipc_cmd -o off ;;
+            yes) $YI_HACK_PREFIX/bin/ipc_cmd -o on ;;
+        esac
+        case $(get_cam_conf SOUND_DETECTION) in
+            no) $YI_HACK_PREFIX/bin/ipc_cmd -b off ;;
+            yes) $YI_HACK_PREFIX/bin/ipc_cmd -b on ;;
+        esac
+        case $(get_cam_conf BABY_CRYING_DETECT) in
+            no) $YI_HACK_PREFIX/bin/ipc_cmd -B off ;;
+            yes) $YI_HACK_PREFIX/bin/ipc_cmd -B on ;;
+        esac
+        case $(get_cam_conf SAVE_VIDEO_ON_MOTION) in
+            no) $YI_HACK_PREFIX/bin/ipc_cmd -v always ;;
+            yes) $YI_HACK_PREFIX/bin/ipc_cmd -v detect ;;
+        esac
+        case $(get_cam_conf LED) in
+            no) $YI_HACK_PREFIX/bin/ipc_cmd -l off ;;
+            yes) $YI_HACK_PREFIX/bin/ipc_cmd -l on ;;
+        esac
+        case $(get_cam_conf IR) in
+            no) $YI_HACK_PREFIX/bin/ipc_cmd -i off ;;
+            yes) $YI_HACK_PREFIX/bin/ipc_cmd -i on ;;
+        esac
+        case $(get_cam_conf ROTATE) in
+            no) $YI_HACK_PREFIX/bin/ipc_cmd -r off ;;
+            yes) $YI_HACK_PREFIX/bin/ipc_cmd -r on ;;
+        esac
+        SENS=$(get_cam_conf SENSITIVITY)
+        case $(echo "$SENS" | tr 'A-Z' 'a-z') in
+            low|medium|high) $YI_HACK_PREFIX/bin/ipc_cmd -s "$SENS" ;;
+        esac
+        SOUND_SENS=$(get_cam_conf SOUND_SENSITIVITY)
+        case "$SOUND_SENS" in
+            30|40|50|60|70|80|90) $YI_HACK_PREFIX/bin/ipc_cmd -n "$SOUND_SENS" ;;
+        esac
     fi
-fi
+) &
 
 # Add crontab
 CRONTAB=$(get_config CRONTAB)
