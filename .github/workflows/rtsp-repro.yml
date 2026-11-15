@@ -61,7 +61,7 @@ jobs:
         run: |
           mkfifo /tmp/h264_high_fifo
           nohup bash -c 'while true; do cat test.h264; sleep 0.05; done > /tmp/h264_high_fifo' >/dev/null 2>&1 &
-          (cd live && ./rRTSPServer -r high -a no -p 554 >server.log 2>&1 &)
+          (cd live && ./rRTSPServer -r high -a no -p 8554 >server.log 2>&1 &)
           sleep 2
           cat live/server.log || true
           python3 scripts/rtsp_probe.py 2>&1 | tee probe_output.txt

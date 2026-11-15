@@ -1,7 +1,7 @@
 import socket, time, sys
 
 HOST = "127.0.0.1"
-PORT = 554
+PORT = 8554  # unprivileged: RTSPServer falls back to IPv6 bind() which needs root on :554
 
 def probe(mid_cmd=None, label=""):
     s = socket.create_connection((HOST, PORT), timeout=8)
