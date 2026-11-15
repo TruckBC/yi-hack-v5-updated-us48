@@ -357,7 +357,11 @@ if [[ $(get_config RTSP) == "yes" ]] ; then
     # Start rRTSPServer for every stream mode (low/high/both). It was previously
     # only launched in the "both" branch, so high/low modes relied on the
     # watchdog to start it ~10s after boot.
-    rRTSPServer -r $RRTSP_RES -a $RRTSP_AUDIO -p $RRTSP_PORT -u $RRTSP_USER -w $RRTSP_PWD &
+    RRTSP_AUTH_ARGS=
+    if [ ! -z "$RRTSP_USER" ] && [ ! -z "$RRTSP_PWD" ]; then
+        RRTSP_AUTH_ARGS="-u $RRTSP_USER -w $RRTSP_PWD"
+    fi
+    rRTSPServer -r $RRTSP_RES -a $RRTSP_AUDIO -p $RRTSP_PORT $RRTSP_AUTH_ARGS &
 #Seems to be killing the resource - fixed via #153
     $YI_HACK_PREFIX/script/wd_rtsp.sh &
 #The above section (except ONVIF) to be also copied to service.sh

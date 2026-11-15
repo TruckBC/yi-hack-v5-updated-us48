@@ -120,6 +120,11 @@ check_rtsp()
     fi
     if [ ! -z "$LAST_UTIME" ]; then
         DELTA=$((UTIME-LAST_UTIME))
+        if [ $DELTA -lt 0 ]; then
+            # rRTSPServer was restarted mid-measurement; re-baseline
+            LAST_UTIME=$UTIME
+            return
+        fi
         if [ $DELTA -le 0 ]; then
             COUNTER=$((COUNTER+1))
             echo "$(date +'%Y-%m-%d %H:%M:%S') - Detected possible locked process ($COUNTER, delta=$DELTA)" >> $LOG_FILE
