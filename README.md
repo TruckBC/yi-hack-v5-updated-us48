@@ -15,6 +15,8 @@ Base: upstream `0.4.1`, repacked by GitHub Actions (`.github/workflows/build.yml
 ### Streaming (the big one)
 - **`rRTSPServer` is the WaveBird hardened build** ([`yi-hack-v5-rtsp-enhanced`](https://github.com/WaveBird/yi-hack-v5-rtsp-enhanced), GPL, md5 `9e3ad7d291d709566f96f01a89d31bed`). The stock LIVE555 v2023.01.19 server has a verified bug on this camera: **any mid-stream RTSP request** (`GET_PARAMETER` keepalive, `OPTIONS`) **permanently kills RTP for that session** (reproduced: 217 KB delivered → 0 KB after the keepalive; stream dies ~30 s in). The hardened build survives keepalives and also fixes their documented IDR-truncation (smearing/artifact) root cause.
 - go2rtc/Frigate can use **plain TCP**: `rtsp://<camera>:554/ch0_0.h264` — no `#transport=udp` hack needed.
+- **`h264grabber` is WaveBird's `v6` build** ([patch 013 + 016](https://github.com/WaveBird/yi-hack-v5-rtsp-enhanced), GPL, md5 `5b7809e1197049f1ec044cb436c2a920`): atomic FIFO writes (no torn frames into the fifo under load) and the audio FIFO expanded 8KB → 256KB (~2.7s of audio buffering — the AV-offset fix that pairs with the video FIFO expansion).
+- **Audio**: set `RTSP_AUDIO=yes` in the web UI and the camera exposes `rtsp://<camera>:554/ch0_2.h264` (AAC) alongside the high video stream. go2rtc/Frigate consume it as a second input; ~32 kbps. **Do not add `-af asetpts` to Frigate's record args** — WaveBird disproved that consumer-side timestamp fix three times; it corrupts segment tails (the "AAC-T" bug). Buffer-side fixes (this fork ships them all) are the correct approach.
 - On-camera A/B verification: stock server died at 1.8 MB streamed; hardened delivered 14.9–18.5 MB continuously through three keepalives.
 
 ### Watchdog / stability
@@ -89,7 +91,7 @@ Check `/tmp/sd/wd_rtsp.log` and `/tmp/sd/camwatch.log`. This fork fixes the two 
 This fork stands on:
 - [alienatedsec/yi-hack-v5](https://github.com/alienatedsec/yi-hack-v5) — the base firmware project (itself built on the yi-hack v4/v3/v2 lineage — see upstream for full credits)
 - [`Temporalwar/yi-hack-v5-updated`](https://github.com/Temporalwar/yi-hack-v5-updated) — continuing maintenance of yi-hack-v5; the watchdog/cron/persistence fixes in this fork are ported from its work
-- [WaveBird/yi-hack-v5-rtsp-enhanced](https://github.com/WaveBird/yi-hack-v5-rtsp-enhanced) — the hardened `rRTSPServer` and the `pipegrow` FIFO-expansion helper (patch 017)
+- [WaveBird/yi-hack-v5-rtsp-enhanced](https://github.com/WaveBird/yi-hack-v5-rtsp-enhanced) — the hardened `rRTSPServer`, the `h264grabber` v6 build (atomic FIFO writes + audio FIFO 256KB), and the `pipegrow` FIFO-expansion helper (patch 017)
 
 ## Disclaimer
 
