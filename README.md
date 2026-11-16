@@ -26,6 +26,10 @@ Base: upstream `0.4.1`, repacked by GitHub Actions (`.github/workflows/build.yml
 - Boot (`system.sh`): `wpa/` upgrade reboot-loop removed, clean WPA2-PSK-only `wpa_supplicant.conf` rewritten at boot (the stock WPA+WEP config crashes the `mt7601Usta` module), CRLF-safe Wi-Fi recovery parsing, `rRTSPServer` starts in all RTSP modes, empty-credential `-u/-w` args omitted.
 - Misc (ported from [`Temporalwar/yi-hack-v5-updated`](https://github.com/Temporalwar/yi-hack-v5-updated), which carries this fork's lineage forward — see its 1.3.0-era fixes): append-mode crontab writes, `camera_settings.sh` persistence, CGI syntax fixes, `setsid` for `onvif_simple_server`.
 
+### Not carried from `yi-hack-v5-updated`
+
+The script-level fixes are ported; **the binary/package updates are not** (they require the cross-compile toolchain this fork does not build): OpenSSL 3.x, curl 8.x (incl. the v1.3.0 curl CVE batch), dropbear 2026.x, mosquitto 2.1, pure-ftpd, libfuse3, cJSON, the full ONVIF event suite, sysctl RTSP buffer tuning, and `WIFI_MULTI`. If you need those, use [`Temporalwar/yi-hack-v5-updated`](https://github.com/Temporalwar/yi-hack-v5-updated) directly — or port them here with the toolchain fixed.
+
 ### Frigate-ready defaults
 Single high-res RTSP stream (`ch0_0.h264`), audio off, cloud off, MQTT off, on-camera AI/motion off, swap on (swappiness 15).
 
