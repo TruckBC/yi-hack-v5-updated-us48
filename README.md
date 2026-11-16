@@ -18,6 +18,7 @@ Base: upstream `0.4.1`, repacked by GitHub Actions (`.github/workflows/build.yml
 - On-camera A/B verification: stock server died at 1.8 MB streamed; hardened delivered 14.9–18.5 MB continuously through three keepalives.
 
 ### Watchdog / stability
+- **Video/audio FIFO pipes expanded 64KB → 1MB** (WaveBird [patch 017](https://github.com/WaveBird/yi-hack-v5-rtsp-enhanced), applied via their prebuilt `pipegrow` helper, GPL). The kernel-default 64KB pipe holds ~0.17s of video at 2–3 Mbps; any Wi-Fi stall overflows it and frames drop **before they ever reach TCP**. With the 1MB FIFO + the server's 512KB user queue + 512KB SO_SNDBUF, total buffering is ~5.8s — most observed Wi-Fi stalls (4–15s) now ride through with zero frame loss. `system.sh` re-applies the capacity every 5s because `h264grabber` recreates the FIFOs (mkfifo resets to 64KB) on every restart.
 - `wd_rtsp.sh` fixes:
   - Recognizes and uses the hardened `rRTSPServer` binary (name resolution for `pidof`/`killall`).
   - CPU-delta lock detection reading `/proc` directly (a stalled LIVE555 delivering 0 bytes consumes no CPU).
@@ -88,7 +89,7 @@ Check `/tmp/sd/wd_rtsp.log` and `/tmp/sd/camwatch.log`. This fork fixes the two 
 This fork stands on:
 - [alienatedsec/yi-hack-v5](https://github.com/alienatedsec/yi-hack-v5) — the base firmware project (itself built on the yi-hack v4/v3/v2 lineage — see upstream for full credits)
 - [`Temporalwar/yi-hack-v5-updated`](https://github.com/Temporalwar/yi-hack-v5-updated) — continuing maintenance of yi-hack-v5; the watchdog/cron/persistence fixes in this fork are ported from its work
-- [WaveBird/yi-hack-v5-rtsp-enhanced](https://github.com/WaveBird/yi-hack-v5-rtsp-enhanced) — the hardened `rRTSPServer`
+- [WaveBird/yi-hack-v5-rtsp-enhanced](https://github.com/WaveBird/yi-hack-v5-rtsp-enhanced) — the hardened `rRTSPServer` and the `pipegrow` FIFO-expansion helper (patch 017)
 
 ## Disclaimer
 

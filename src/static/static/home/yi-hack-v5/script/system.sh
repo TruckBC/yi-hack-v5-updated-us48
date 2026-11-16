@@ -569,6 +569,21 @@ fi
 
 /usr/sbin/crond -c /var/spool/cron/crontabs/
 
+# [PIPEGROW] WaveBird patch 017: expand the video/audio FIFO pipes from the
+# 64KB kernel default (~0.17s of video at 2-3Mbps) to 1MB (~2.7s). During a
+# Wi-Fi stall the tiny default FIFO overflows and drops frames BEFORE they
+# ever reach TCP; with the expanded FIFO + rRTSPServer's 512KB user queue +
+# 512KB SO_SNDBUF, total buffering is ~5.8s, covering most observed stalls.
+# The loop runs every 5s because h264grabber recreates the FIFOs (mkfifo) on
+# every restart, which resets capacity to 64KB. pipegrow opens the pipe
+# O_RDWR|O_NONBLOCK, so it never blocks and is safe while streaming.
+(while true; do
+    for F in /tmp/h264_high_fifo /tmp/h264_low_fifo /tmp/aac_audio_fifo; do
+        [ -p "$F" ] && "$YI_HACK_PREFIX/bin/pipegrow" "$F" 1048576 >/dev/null 2>&1
+    done
+    sleep 5
+done) &
+
 # Add MQTT Advertise
 if [ -f "$YI_HACK_PREFIX/script/mqtt_advertise/startup.sh" ]; then
     $YI_HACK_PREFIX/script/mqtt_advertise/startup.sh
