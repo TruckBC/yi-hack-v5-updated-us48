@@ -33,6 +33,7 @@ get_config()
 }
 
 COUNTER=0
+RMSCOUNTER=0
 COUNTER_LIMIT=10
 INTERVAL=10
 
@@ -80,12 +81,10 @@ restart_grabber()
 
 restart_cloud()
 {
-    if [[ $(get_config DISABLE_CLOUD) == "yes" ]] ; then
     (
         cd /home/app || exit 1
         ./cloud &
     )
-    fi
 }
 
 restart_mqttv4()
@@ -158,25 +157,36 @@ check_rtsp()
 
 check_cloud()
 {
-    CPU=`top -b -n 1 | grep cloud | grep -v grep | tail -n 1 | awk '{print $8}'`
+    # DISABLE_CLOUD=yes: no cloud process should exist at all.
+    # Upstream logic was inverted here - it respawned ./cloud only when cloud
+    # was disabled, so the watchdog spawned and killed it every 15 seconds.
     if [[ $(get_config DISABLE_CLOUD) == "yes" ]] ; then
-    (
+        return
+    fi
+    CPU=`top -b -n 1 | grep cloud | grep -v grep | tail -n 1 | awk '{print $8}'`
     if [ "$CPU" == "" ]; then
-        echo "$(date +'%Y-%m-%d %H:%M:%S') - No running processes, restarting ./cloud & ..." >> $LOG_FILE
+        echo "$(date +'%Y-%m-%d %H:%M:%S') - No running cloud process, restarting ./cloud & ..." >> $LOG_FILE
         restart_cloud
         COUNTER=0
-    fi
-    )
     fi
 }
 
 check_rmm()
 {
-    PS=`ps | grep rmm | grep -v grep | grep -c ^`
-
-    if [ $PS -eq 0 ]; then
-        echo "$(date +'%Y-%m-%d %H:%M:%S') - ./rmm is not running, restarting the camera  ..." >> $LOG_FILE
+    # A single missed 'ps' scan (the camera can stall for seconds under load
+    # and ps can return an empty/erroring output) must NOT reboot the camera.
+    # Require RMSCOUNTER consecutive misses before calling reboot.
+    if pidof rmm >/dev/null; then
+        RMSCOUNTER=0
+        return
+    fi
+    RMSCOUNTER=$((RMSCOUNTER + 1))
+    if [ $RMSCOUNTER -ge 3 ]; then
+        RMSCOUNTER=0
+        echo "$(date +'%Y-%m-%d %H:%M:%S') - rmm not running 3 checks in a row, restarting the camera ..." >> $LOG_FILE
         reboot
+    else
+        echo "$(date +'%Y-%m-%d %H:%M:%S') - rmm not found (miss $RMSCOUNTER/3), waiting before reboot ..." >> $LOG_FILE
     fi
 }
 
