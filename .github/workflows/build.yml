@@ -103,9 +103,20 @@ jobs:
           cp -av src/www/httpd/.                            "${HACK_DIR}/www/"
            # Overlay patched rRTSPServer binary (WaveBird hardened build:
            # survives mid-stream RTSP keepalives; fixes IDR truncation)
+           # plus security bins: static curl 8.21.0/openssl 3.5.7,
+           # dropbear 2025.89 suite (self-contained, no libatomic)
            if [ -d src/static/static/home/yi-hack-v5/bin ]; then
              mkdir -p "${HACK_DIR}/bin"
              cp -av src/static/static/home/yi-hack-v5/bin/. "${HACK_DIR}/bin/"
+           fi
+           if [ -d src/static/static/home/yi-hack-v5/sbin ]; then
+             mkdir -p "${HACK_DIR}/sbin"
+             cp -av src/static/static/home/yi-hack-v5/sbin/. "${HACK_DIR}/sbin/"
+           fi
+           # CA bundle for the new curl (TLS verification in check_update.sh)
+           if [ -d src/static/static/home/yi-hack-v5/etc/ssl ]; then
+             mkdir -p "${HACK_DIR}/etc/ssl"
+             cp -av src/static/static/home/yi-hack-v5/etc/ssl/. "${HACK_DIR}/etc/ssl/"
            fi
 
           # Force Unix LF line endings on all shell scripts and conf files
@@ -132,6 +143,8 @@ jobs:
           echo "=== Verifying required entries ==="
           tar -tzf "$TARBALL" | grep -E '(^|/)(home_y20|rootfs_y20)$' && echo "OK: firmware images present"
           tar -tzf "$TARBALL" | grep -q 'yi-hack-v5/script/system.sh' && echo "OK: patched system.sh present"
+          tar -tzf "$TARBALL" | grep -q 'yi-hack-v5/etc/ssl/cacert.pem' && echo "OK: CA bundle present"
+          tar -tzf "$TARBALL" | grep -q 'yi-hack-v5/sbin/dropbear' && echo "OK: dropbear 2025.89 present"
           tar -tzf "$TARBALL" | grep -v 'yi-hack-v5/wpa/' | grep -q . && echo "OK: no wpa/ payload"
 
       - name: Upload build artifact

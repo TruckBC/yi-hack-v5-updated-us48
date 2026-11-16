@@ -29,9 +29,18 @@ Base: upstream `0.4.1`, repacked by GitHub Actions (`.github/workflows/build.yml
 - Boot (`system.sh`): `wpa/` upgrade reboot-loop removed, clean WPA2-PSK-only `wpa_supplicant.conf` rewritten at boot (the stock WPA+WEP config crashes the `mt7601Usta` module), CRLF-safe Wi-Fi recovery parsing, `rRTSPServer` starts in all RTSP modes, empty-credential `-u/-w` args omitted.
 - Misc (ported from [`Temporalwar/yi-hack-v5-updated`](https://github.com/Temporalwar/yi-hack-v5-updated), which carries this fork's lineage forward — see its 1.3.0-era fixes): append-mode crontab writes, `camera_settings.sh` persistence, CGI syntax fixes, `setsid` for `onvif_simple_server`.
 
+### Security bins (curl 8.21.0 / OpenSSL 3.5.7 / dropbear 2025.89)
+
+Built **in this repo** with the OpenIPC `hisiv300` gcc 4.8.3 toolchain (GitHub Actions, `.github/workflows/security-bins.yml`); the published `yi-hack-v5-updated` binaries are unusable on-camera because they need an unpublished `libatomic.so.1`. Ours are self-contained:
+
+- **`curl` 8.21.0** — statically linked against OpenSSL 3.5.7 (1.3.0's 18-CVE batch incl. CVE-2026-8932). Needs only uClibc `libc/libdl/libpthread`; TLS verifies against `etc/ssl/cacert.pem` (Mozilla bundle).
+- **`dropbear` 2025.89 + `dbclient`/`dropbearkey`/`dropbearconvert`/`scp`** — bundled libtomcrypt, replaces the stock v2018.76.
+- **`check_update.sh`** — rewritten: uses the new curl with mandatory CA verification (fails closed, never MITM-able like the stock `wget --no-check-certificate`) and checks **this fork's** releases instead of upstream's.
+- mosquitto/pure-ftpd/libfuse3/cJSON from `yi-hack-v5-updated` are not carried (unused by this fork; FTP is disabled).
+
 ### Not carried from `yi-hack-v5-updated`
 
-The script-level fixes are ported; **the binary/package updates are not** (they require the cross-compile toolchain this fork does not build): OpenSSL 3.x, curl 8.x (incl. the v1.3.0 curl CVE batch), dropbear 2026.x, mosquitto 2.1, pure-ftpd, libfuse3, cJSON, the full ONVIF event suite, sysctl RTSP buffer tuning, and `WIFI_MULTI`. If you need those, use [`Temporalwar/yi-hack-v5-updated`](https://github.com/Temporalwar/yi-hack-v5-updated) directly — or port them here with the toolchain fixed.
+The script-level fixes and the security bins above are ported/built; the remaining extras are not: the full ONVIF event suite, sysctl RTSP buffer tuning, and `WIFI_MULTI`. mosquitto 1.6.15, pure-ftpd and libfuse3/cJSON are intentionally skipped as unused.
 
 ### Frigate-ready defaults
 Single high-res RTSP stream (`ch0_0.h264`), audio off, cloud off, MQTT off, on-camera AI/motion off, swap on (swappiness 15).
