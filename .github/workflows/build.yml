@@ -101,6 +101,12 @@ jobs:
           cp -av src/static/static/home/yi-hack-v5/script/. "${HACK_DIR}/script/"
           cp -av src/static/static/home/yi-hack-v5/etc/.    "${HACK_DIR}/etc/"
           cp -av src/www/httpd/.                            "${HACK_DIR}/www/"
+           # Overlay patched rRTSPServer binary (WaveBird hardened build:
+           # survives mid-stream RTSP keepalives; fixes IDR truncation)
+           if [ -d src/static/static/home/yi-hack-v5/bin ]; then
+             mkdir -p "${HACK_DIR}/bin"
+             cp -av src/static/static/home/yi-hack-v5/bin/. "${HACK_DIR}/bin/"
+           fi
 
           # Force Unix LF line endings on all shell scripts and conf files
           find "${HACK_DIR}/script" "${HACK_DIR}/etc" "${HACK_DIR}/www" -type f \

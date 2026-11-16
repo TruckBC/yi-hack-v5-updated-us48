@@ -17,6 +17,15 @@ MODEL_SUFFIX=$(cat /home/app/.camver)
 LOG_FILE="/tmp/sd/wd_rtsp.log"
 #LOG_FILE="/dev/null"
 
+# Prefer the hardened rRTSPServer build when present (survives mid-stream
+# RTSP keepalives and fixes IDR truncation); fall back to the stock binary.
+if [ -x "$YI_HACK_PREFIX/bin/rRTSPServer.hardened" ]; then
+    RRTSP_BIN="rRTSPServer.hardened"
+else
+    RRTSP_BIN="rRTSPServer"
+fi
+RRTSP_BIN_PATH="$YI_HACK_PREFIX/bin/$RRTSP_BIN"
+
 get_config()
 {
     key=$1
@@ -45,13 +54,13 @@ fi
 
 restart_rtsp()
 {
-    killall -q rRTSPServer
-    rRTSPServer -r $RRTSP_RES -a $RRTSP_AUDIO -p $RRTSP_PORT $RRTSP_USER $RRTSP_PWD &
+    killall -q $RRTSP_BIN
+    $RRTSP_BIN_PATH -r $RRTSP_RES -a $RRTSP_AUDIO -p $RRTSP_PORT $RRTSP_USER $RRTSP_PWD &
 }
 
 restart_grabber()
 {
-    killall -q rRTSPServer
+    killall -q $RRTSP_BIN
     killall -q h264grabber
     if [[ $(get_config RTSP_STREAM) == "low" ]]; then
         h264grabber -r low -m $MODEL_SUFFIX -f &
@@ -66,7 +75,7 @@ restart_grabber()
     if [[ $(get_config RTSP_AUDIO) == "yes" ]]; then
         h264grabber -r AUDIO -m $MODEL_SUFFIX -f &
     fi
-    rRTSPServer -r $RRTSP_RES -a $RRTSP_AUDIO -p $RRTSP_PORT $RRTSP_USER $RRTSP_PWD &
+    $RRTSP_BIN_PATH -r $RRTSP_RES -a $RRTSP_AUDIO -p $RRTSP_PORT $RRTSP_USER $RRTSP_PWD &
 }
 
 restart_cloud()
@@ -87,11 +96,11 @@ restart_mqttv4()
 check_rtsp()
 {
     SOCKET=`/bin/netstat -an 2>&1 | grep ":$RRTSP_PORT " | grep LISTEN | grep -c ^`
-    PID=`pidof rRTSPServer | awk '{print $1}'`
+    PID=`pidof $RRTSP_BIN | awk '{print $1}'`
 
     if [ -z "$PID" ]; then
-        echo "$(date +'%Y-%m-%d %H:%M:%S') - No running processes, restarting rRTSPServer ..." >> $LOG_FILE
-        killall -q rRTSPServer
+        echo "$(date +'%Y-%m-%d %H:%M:%S') - No running processes, restarting $RRTSP_BIN ..." >> $LOG_FILE
+        killall -q $RRTSP_BIN
         sleep 1
         restart_rtsp
         COUNTER=0
@@ -130,7 +139,7 @@ check_rtsp()
             echo "$(date +'%Y-%m-%d %H:%M:%S') - Detected possible locked process ($COUNTER, delta=$DELTA)" >> $LOG_FILE
             if [ $COUNTER -ge $COUNTER_LIMIT ]; then
                 echo "$(date +'%Y-%m-%d %H:%M:%S') - Restarting rtsp process" >> $LOG_FILE
-                killall -q rRTSPServer
+                killall -q $RRTSP_BIN
                 sleep 1
                 restart_rtsp
                 COUNTER=0
