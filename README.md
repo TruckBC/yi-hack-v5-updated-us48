@@ -20,7 +20,15 @@ This is a patched fork of [`alienatedsec/yi-hack-v5`](https://github.com/alienat
 - **Watchdog & cron fixes** (ported from `Temporalwar/yi-hack-v5-updated`): `wd_rtsp.sh` port-variable fix so locked `rRTSPServer` processes are restarted, `>>` (append) instead of `>` for all crontab writes, `camera_settings.sh` persistence via `sed -i`, CGI `VAR = "x"` spacing/syntax fixes, `setsid` detachment for `onvif_simple_server`, and `rRTSPServer` now starts in *all* RTSP stream modes (previously only `both`).
 - **Frigate-ready defaults** — single high-res RTSP stream (`ch0_0.h264`), audio disabled, cloud disabled, MQTT off, on-camera AI/motion detection off, swap enabled (swappiness 15), timezone PST8PDT.
 
-### ⚠️ go2rtc / Frigate: use UDP transport for the camera→go2rtc leg
+- **Hardened RTSP server + watchdog fixes (2026-11-16)**: `rRTSPServer` is the WaveBird hardened build (survives mid-stream keepalives → go2rtc can use plain TCP again); `wd_rtsp.sh` resolves the `rRTSPServer.hardened` name for `pidof`/`killall`, the inverted `DISABLE_CLOUD` logic no longer respawns `./cloud` every 15 s when cloud is disabled, and `check_rmm` needs **3 consecutive** `pidof rmm` misses before calling `reboot` (a single missed `ps` scan under load was rebooting the camera spontaneously).
+
+### ⚠️ go2rtc / Frigate transport
+
+With the hardened `rRTSPServer`, plain TCP (`rtsp://192.168.2.203:554/ch0_0.h264`, no suffix) is now recommended. The notes below apply to the *stock* server only.
+
+### ⚠️ Wi-Fi stability warning (mt7601 USB driver)
+
+The `mt7601Usta` USB Wi-Fi module on this camera stalls under load (observed 4–15 s TX freezes) and, when the camera has been up a while under streaming load, the stalls can degrade **the whole 2.4 GHz network**, not just the camera. This matches WaveBird's findings in the upstream rtsp-enhanced fork (`wlan0` stalls are unfixable in userspace). If the camera is unreliable over Wi-Fi, the proven fix is **wired ethernet** (or a different Wi-Fi adapter).
 
 The stock `rRTSPServer` (LIVE555 v2023.01.19) has a verified bug on this camera: **any RTSP request that arrives mid-stream (`GET_PARAMETER` keepalive, `OPTIONS`, …) permanently stops RTP data for that session** — new clients keep working, the affected one goes silent until it reconnects (and dies again at its next keepalive ~30 s later). Interleaved-TCP sessions are the ones that starve; UDP sessions are immune.
 
