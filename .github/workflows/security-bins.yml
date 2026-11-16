@@ -42,7 +42,7 @@ jobs:
           SYSROOT=$TC/target
           curl -fL https://ftp.gnu.org/gnu/gcc/gcc-4.8.3/gcc-4.8.3.tar.bz2 -o /tmp/gcc.tar.bz2
           mkdir -p /tmp/gccsrc && cd /tmp/gccsrc
-          tar -xjf /tmp/gcc.tar.bz2 --wildcards "gcc-4.8.3/libatomic/*" "gcc-4.8.3/config.guess" "gcc-4.8.3/config.sub" "gcc-4.8.3/install-sh" "gcc-4.8.3/missing" "gcc-4.8.3/mkinstalldirs" "gcc-4.8.3/move-if-change" "gcc-4.8.3/ylwrap"
+          tar -xjf /tmp/gcc.tar.bz2 --wildcards "gcc-4.8.3/libatomic/*" "gcc-4.8.3/config.guess" "gcc-4.8.3/config.sub" "gcc-4.8.3/install-sh" "gcc-4.8.3/missing" "gcc-4.8.3/mkinstalldirs" "gcc-4.8.3/move-if-change" "gcc-4.8.3/ylwrap" "gcc-4.8.3/config-ml.in" "gcc-4.8.3/config.rpath" "gcc-4.8.3/ChangeLog"
           cd /tmp/gccsrc/gcc-4.8.3/libatomic
           cp ../config.guess ../config.sub .
           export PATH=$TC/bin:$PATH
