@@ -4,9 +4,9 @@ A patched fork of [`alienatedsec/yi-hack-v5`](https://github.com/alienatedsec/yi
 
 ## ⚠️ Tested hardware
 
-**All modifications in this fork have only been tested on the `48US` `yi_home_1080p` (y20) camera.** The CI build produces a package only for that model. Other YI models listed by upstream are *not* tested here and may not work — use upstream directly for anything else.
+**All modifications in this fork have only been tested on the `48US` `yi_home_1080p` (y20) camera.** Two cameras ran this fork through the full test matrix (idle, TCP streaming with mid-stream keepalives, Frigate soak): both stable.
 
-Two cameras ran this fork through the full test matrix (idle, TCP streaming with mid-stream keepalives, Frigate soak): both stable.
+**Other YI models are untested here.** The CI currently packages only `yi_home_1080p`. Patches for other models from upstream are carried in the tree, but nothing in this fork has been validated on them — if you flash a different model, you do so **at your own risk** (this includes every Dome/Outdoor variant; upstream itself notes heavy CPU issues with Snapshot/ONVIF on the Dome models).
 
 ## What this fork changes
 
@@ -24,7 +24,7 @@ Base: upstream `0.4.1`, repacked by GitHub Actions (`.github/workflows/build.yml
   - **Fixed inverted `DISABLE_CLOUD` logic** — upstream respawned `./cloud` every 15 s *only when cloud was disabled*, spamming thousands of failed spawns.
   - **`check_rmm` no longer reboots the camera on a single missed `ps` scan** — it requires 3 consecutive misses. One flapped scan under load was causing spontaneous reboots.
 - Boot (`system.sh`): `wpa/` upgrade reboot-loop removed, clean WPA2-PSK-only `wpa_supplicant.conf` rewritten at boot (the stock WPA+WEP config crashes the `mt7601Usta` module), CRLF-safe Wi-Fi recovery parsing, `rRTSPServer` starts in all RTSP modes, empty-credential `-u/-w` args omitted.
-- Misc (ported from `Temporalwar/yi-hack-v5-updated`): append-mode crontab writes, `camera_settings.sh` persistence, CGI syntax fixes, `setsid` for `onvif_simple_server`.
+- Misc (ported from [`Temporalwar/yi-hack-v5-updated`](https://github.com/Temporalwar/yi-hack-v5-updated), which carries this fork's lineage forward — see its 1.3.0-era fixes): append-mode crontab writes, `camera_settings.sh` persistence, CGI syntax fixes, `setsid` for `onvif_simple_server`.
 
 ### Frigate-ready defaults
 Single high-res RTSP stream (`ch0_0.h264`), audio off, cloud off, MQTT off, on-camera AI/motion off, swap on (swappiness 15).
@@ -44,16 +44,16 @@ Single high-res RTSP stream (`ch0_0.h264`), audio off, cloud off, MQTT off, on-c
 ```yaml
 # go2rtc.yaml
 streams:
-  yi_203: rtsp://192.168.2.203:554/ch0_0.h264
+  yi_cam: rtsp://192.168.1.50:554/ch0_0.h264
 
 # frigate.yaml
 cameras:
-  yi_203:
+  yi_cam:
     ffmpeg:
       output_args:
         record: preset record generic
       inputs:
-        - path: rtsp://127.0.0.1:8554/yi_203
+        - path: rtsp://127.0.0.1:8554/yi_cam
           input_args: preset-rtsp-restream
           roles: [detect, record]
 ```
@@ -81,7 +81,10 @@ Check `/tmp/sd/wd_rtsp.log` and `/tmp/sd/camwatch.log`. This fork fixes the two 
 
 ## Acknowledgments
 
-This fork stands on [alienatedsec/yi-hack-v5](https://github.com/alienatedsec/yi-hack-v5) (itself built on yi-hack-v4/v3/v2 lineage — see upstream for full credits), the WaveBird hardened RTSP build, and `Temporalwar`'s watchdog fixes.
+This fork stands on:
+- [alienatedsec/yi-hack-v5](https://github.com/alienatedsec/yi-hack-v5) — the base firmware project (itself built on the yi-hack v4/v3/v2 lineage — see upstream for full credits)
+- [`Temporalwar/yi-hack-v5-updated`](https://github.com/Temporalwar/yi-hack-v5-updated) — continuing maintenance of yi-hack-v5; the watchdog/cron/persistence fixes in this fork are ported from its work
+- [WaveBird/yi-hack-v5-rtsp-enhanced](https://github.com/WaveBird/yi-hack-v5-rtsp-enhanced) — the hardened `rRTSPServer`
 
 ## Disclaimer
 
