@@ -42,7 +42,7 @@ jobs:
           SYSROOT=$TC/target
           curl -fL https://ftp.gnu.org/gnu/gcc/gcc-4.8.3/gcc-4.8.3.tar.bz2 -o /tmp/gcc.tar.bz2
           mkdir -p /tmp/gccsrc && cd /tmp/gccsrc
-          tar -xjf /tmp/gcc.tar.bz2 --wildcards "gcc-4.8.3/libatomic/*" "gcc-4.8.3/config.guess" "gcc-4.8.3/config.sub" "gcc-4.8.3/install-sh" "gcc-4.8.3/missing" "gcc-4.8.3/mkinstalldirs" "gcc-4.8.3/move-if-change" "gcc-4.8.3/ylwrap" "gcc-4.8.3/config-ml.in" "gcc-4.8.3/config.rpath" "gcc-4.8.3/ChangeLog"
+          tar -xjf /tmp/gcc.tar.bz2 --wildcards "gcc-4.8.3/libatomic/*" "gcc-4.8.3/config.guess" "gcc-4.8.3/config.sub" "gcc-4.8.3/install-sh" "gcc-4.8.3/missing" "gcc-4.8.3/mkinstalldirs" "gcc-4.8.3/move-if-change" "gcc-4.8.3/ylwrap" "gcc-4.8.3/config-ml.in" "gcc-4.8.3/config.rpath" "gcc-4.8.3/ChangeLog" "gcc-4.8.3/ltmain.sh" "gcc-4.8.3/libtool.m4" "gcc-4.8.3/ltoptions.m4" "gcc-4.8.3/ltsugar.m4" "gcc-4.8.3/ltversion.m4" "gcc-4.8.3/lt~obsolete.m4"
           cd /tmp/gccsrc/gcc-4.8.3/libatomic
           cp ../config.guess ../config.sub .
           export PATH=$TC/bin:$PATH
@@ -54,7 +54,7 @@ jobs:
             AR=$TC/bin/${CROSS}-ar \
             RANLIB=$TC/bin/${CROSS}-ranlib \
             CFLAGS="-Os -mcpu=arm926ej-s -march=armv5te -mfloat-abi=soft -msoft-float -fno-short-enums --sysroot=$SYSROOT -I/tmp/gccsrc/gcc-4.8.3/libatomic" \
-            --disable-shared --enable-static \
+            --disable-shared --enable-static --disable-multilib \
             target_cpu_file_list=""
           make -j2
           make install
