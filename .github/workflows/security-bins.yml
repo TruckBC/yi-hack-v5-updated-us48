@@ -1,0 +1,166 @@
+name: Build security-update binaries (curl 8.21.0 / dropbear 2025.89)
+
+# Fully static, self-contained ARM binaries for the y20 camera (ARMv5TE,
+# uClibc 0.9.33.2). Built with the OpenIPC hisiv300 toolchain (gcc 4.8.3).
+# curl is linked statically against OpenSSL 3.5.7 so no libssl/libcrypto/
+# libatomic runtime deps are shipped; dropbear uses bundled libtomcrypt.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/security-bins.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:22.04
+    env:
+      CROSS: arm-hisiv300-linux-uclibcgnueabi
+    steps:
+      - name: Install build deps (incl. i386 for the toolchain)
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          dpkg --add-architecture i386
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential wget bzip2 xz-utils tar git ca-certificates \
+            libc6:i386 libstdc++6:i386 zlib1g:i386 file
+
+      - name: Fetch OpenIPC hisiv300 toolchain (gcc 4.8.3)
+        run: |
+          mkdir -p /opt/hisi-linux/x86-arm
+          curl -fL "https://github.com/OpenIPC/toolchains/releases/download/v1/arm-hisiv300-linux.tar.bz2" -o /tmp/tc.tar.bz2
+          tar -xjf /tmp/tc.tar.bz2 -C /opt/hisi-linux/x86-arm/
+          /opt/hisi-linux/x86-arm/arm-hisiv300-linux/bin/${CROSS}-gcc --version
+
+      - name: Build libatomic (gcc 4.8.3 sources, armv5te soft-float)
+        run: |
+          set -e
+          TC=/opt/hisi-linux/x86-arm/arm-hisiv300-linux
+          SYSROOT=$TC/target
+          curl -fL https://ftp.gnu.org/gnu/gcc/gcc-4.8.3/gcc-4.8.3.tar.bz2 -o /tmp/gcc.tar.bz2
+          mkdir -p /tmp/gccsrc && cd /tmp/gccsrc
+          tar -xjf /tmp/gcc.tar.bz2 --wildcards "gcc-4.8.3/libatomic/*" "gcc-4.8.3/config.guess" "gcc-4.8.3/config.sub"
+          cd /tmp/gccsrc/gcc-4.8.3/libatomic
+          cp ../config.guess ../config.sub .
+          export PATH=$TC/bin:$PATH
+          mkdir build && cd build
+          ../configure \
+            --host=${CROSS} --build=x86_64-pc-linux-gnu \
+            --prefix=/tmp/staging \
+            CC=$TC/bin/${CROSS}-gcc \
+            AR=$TC/bin/${CROSS}-ar \
+            RANLIB=$TC/bin/${CROSS}-ranlib \
+            CFLAGS="-Os -mcpu=arm926ej-s -march=armv5te -mfloat-abi=soft -msoft-float -fno-short-enums --sysroot=$SYSROOT -I/tmp/gccsrc/gcc-4.8.3/libatomic" \
+            --disable-shared --enable-static \
+            target_cpu_file_list=""
+          make -j2
+          make install
+          file /tmp/staging/lib/libatomic.a
+
+      - name: Build OpenSSL 3.5.7 (static, no-asm)
+        run: |
+          set -e
+          TC=/opt/hisi-linux/x86-arm/arm-hisiv300-linux
+          SYSROOT=$TC/target
+          curl -fL https://github.com/openssl/openssl/releases/download/openssl-3.5.7/openssl-3.5.7.tar.gz -o /tmp/openssl.tar.gz
+          cd /tmp
+          tar -xzf openssl.tar.gz
+          cd openssl-3.5.7
+          export PATH=$TC/bin:$PATH
+          ./Configure linux-armv4 \
+            --cross-compile-prefix=${CROSS}- \
+            --prefix=/tmp/staging-oss \
+            no-shared no-asm no-hw no-engine no-async no-tests no-docs \
+            -fPIC -D_GNU_SOURCE \
+            -mcpu=arm926ej-s -march=armv5te -mfloat-abi=soft -msoft-float -fno-short-enums \
+            --sysroot=$SYSROOT -latomic -L/tmp/staging/lib
+          make -j2 build_libs
+          make install_sw
+          ls /tmp/staging-oss/lib || true
+
+      - name: Build curl 8.21.0 (fully static)
+        run: |
+          set -e
+          TC=/opt/hisi-linux/x86-arm/arm-hisiv300-linux
+          SYSROOT=$TC/target
+          curl -fL https://github.com/curl/curl/releases/download/curl-8_21_0/curl-8.21.0.tar.gz -o /tmp/curl.tar.gz
+          cd /tmp
+          tar -xzf curl.tar.gz
+          cd curl-8.21.0
+          export PATH=$TC/bin:$PATH
+          export PKG_CONFIG_PATH=/tmp/staging-oss/lib/pkgconfig
+          ./configure \
+            --host=${CROSS} --build=x86_64-pc-linux-gnu \
+            --prefix=/tmp/out-curl \
+            --with-openssl=/tmp/staging-oss \
+            --with-ca-bundle=/tmp/sd/yi-hack-v5/etc/ssl/cacert.pem \
+            --enable-static --disable-shared \
+            --disable-ldap --disable-manual --disable-verbose \
+            --without-libpsl --without-libidn2 --without-brotli --without-zstd --without-nghttp2 --without-zlib \
+            --disable-ftp --disable-file --disable-dict --disable-telnet --disable-tftp \
+            --disable-pop3 --disable-imap --disable-smtp --disable-gopher --disable-rtsp --disable-mqtt \
+            CC=$TC/bin/${CROSS}-gcc \
+            AR=$TC/bin/${CROSS}-ar \
+            RANLIB=$TC/bin/${CROSS}-ranlib \
+            CFLAGS="-Os -mcpu=arm926ej-s -march=armv5te -mfloat-abi=soft -msoft-float -fno-short-enums --sysroot=$SYSROOT" \
+            LDFLAGS="-L/tmp/staging-oss/lib -L/tmp/staging/lib -latomic -static-libgcc"
+          make -j2
+          $TC/bin/${CROSS}-strip ./src/curl
+          file ./src/curl
+          mkdir -p /tmp/artifacts/bin
+          cp ./src/curl /tmp/artifacts/bin/curl
+
+      - name: Build dropbear 2025.89 (bundled libtomcrypt, no libatomic)
+        run: |
+          set -e
+          TC=/opt/hisi-linux/x86-arm/arm-hisiv300-linux
+          SYSROOT=$TC/target
+          curl -fL https://matt.ucc.asn.au/dropbear/releases/dropbear-2025.89.tar.bz2 -o /tmp/dropbear.tar.bz2
+          cd /tmp
+          tar -xjf dropbear.tar.bz2
+          cd dropbear-2025.89
+          cat > localoptions.h <<'EOF'
+          #define DROPBEAR_SVR_DROP_PRIVS 0
+          #define DROPBEAR_SVR_LOCALSTREAMFWD 0
+          #define DROPBEAR_SVR_MULTIUSER 0
+          EOF
+          export PATH=$TC/bin:$PATH
+          ./configure \
+            --host=${CROSS} --build=x86_64-pc-linux-gnu \
+            --prefix=/tmp/out-db \
+            --disable-zlib --disable-wtmp --disable-lastlog --enable-bundled-libtom \
+            CC=$TC/bin/${CROSS}-gcc \
+            AR=$TC/bin/${CROSS}-ar \
+            RANLIB=$TC/bin/${CROSS}-ranlib \
+            CFLAGS="-Os -mcpu=arm926ej-s -march=armv5te -mfloat-abi=soft -msoft-float -fno-short-enums --sysroot=$SYSROOT" \
+            LDFLAGS="--sysroot=$SYSROOT -static-libgcc"
+          make -j2 PROGRAMS="dropbear dbclient dropbearkey dropbearconvert scp"
+          $TC/bin/${CROSS}-strip dropbear dbclient dropbearkey dropbearconvert scp
+          file dropbear
+          mkdir -p /tmp/artifacts/bin /tmp/artifacts/sbin
+          cp dropbear /tmp/artifacts/sbin/dropbear
+          cp dbclient dropbearkey dropbearconvert scp /tmp/artifacts/bin/
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p /tmp/artifacts
+          cat > /tmp/artifacts/MANIFEST.txt <<EOF
+          built $(date -u +%Y-%m-%dT%H:%M:%SZ) with OpenIPC hisiv300 gcc 4.8.3
+          curl 8.21.0 (static, openssl 3.5.7 static, ca-bundle path /tmp/sd/yi-hack-v5/etc/ssl/cacert.pem)
+          dropbear 2025.89 + dbclient/dropbearkey/dropbearconvert/scp (bundled libtomcrypt)
+          EOF
+          cd /tmp/artifacts
+          for f in bin/curl sbin/dropbear bin/dbclient bin/dropbearkey bin/dropbearconvert bin/scp; do
+            sha256sum $f >> MANIFEST.txt
+          done
+          cat MANIFEST.txt
+          tar -czf security-bins.tgz bin sbin MANIFEST.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-bins
+          path: /tmp/artifacts/security-bins.tgz
