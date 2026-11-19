@@ -67,7 +67,7 @@ cameras:
   yi_cam:
     ffmpeg:
       output_args:
-        record: preset record generic
+        record: preset-record-generic
       inputs:
         - path: rtsp://127.0.0.1:8554/yi_cam
           input_args: preset-rtsp-restream
@@ -75,6 +75,15 @@ cameras:
 ```
 
 Keep `detect` resolution ≤1080p and restream through go2rtc so multiple Frigate consumers share one camera connection.
+
+### Recommended Camera Settings for 24/7 Frigate Use
+
+In the web UI (**Configurations → System** / `system.conf`):
+- **`RTSP=yes`, `RTSP_STREAM=high`, `RTSP_AUDIO=no`**: Single 1080p video-only stream paired with `preset-record-generic` in Frigate (if you enable `RTSP_AUDIO=yes`, also add `ch0_2.h264` to `go2rtc` and use `preset-record-generic-audio-aac`).
+- **`SWAP_FILE=no`**: Disabling the SD-card swap file avoids swap I/O stalls on constrained microSD cards (the camera runs with ~14–16 MB free RAM when cloud/MQTT/AI are off).
+- **`SPEAKER_AUDIO=no`**: Disables the speaker daemon if two-way audio isn't used.
+- **`CRONTAB=0 3 * * * /sbin/reboot`** *(optional)*: Scheduled nightly reboot to keep long-running Wi-Fi/RTSP sessions fresh.
+- **Note on `load_avg`:** A `load_avg` of `~5.0–6.0` in `/cgi-bin/status.json` is normal on this hardware because several stock Yi kernel driver threads sit in uninterruptible sleep (`D` state).
 
 ## Troubleshooting
 
